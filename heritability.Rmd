@@ -1,0 +1,292 @@
+---
+title: "Cups Task GP"
+author: "Dustin Pluta"
+date: "May 30, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(rstan)
+library(shinystan)
+library(magrittr)
+library(reshape2)
+library(dplyr)
+knitr::opts_chunk$set(echo = TRUE)
+rstan_options(auto_write = TRUE)
+```
+
+
+## Examine Risk Counts
+
+```{r}
+risk_counts <- read.csv("Data/risk_counts.csv")
+grm <- read.csv("Data/top_snps_grm.csv")
+grm$X <- risk_counts$subj_id[1:209]
+names(grm)[1] <- "subj_id"
+
+grmall <- read.csv("Data/grm_top3e05.csv")
+grmall$X <- risk_counts$subj_id[1:209]
+names(grmall)[1] <- "subj_id"
+```
+
+```{r}
+par(mfrow = c(1, 2))
+hist(risk_counts %>% filter(task == 1) %$% risk)
+hist(risk_counts %>% filter(task == 2) %$% risk)
+risk_counts %>% group_by(task) %>% summarize(risk_mean = mean(risk))
+risk_diff <- risk_counts %>% group_by(subj_id) %>% summarize(risk_diff = diff(risk)) %$% risk_diff
+```
+
+## Model 1
+
+$$y = g + \varepsilon$$
+$$y \sim N(0, \sigma^2_g K + \sigma^2_{\varepsilon}I_N)$$
+
+```{r, message = FALSE, warning = FALSE}
+y <- risk_diff[1:209]
+N <- length(y)
+Sigma_eps <- diag(1, nrow = N, ncol = N)
+alpha <- 1
+beta <- 19
+theta <- 0.001
+K <- matrix(grm[, 2:210])
+dataList.1 <- list(N = N, K = K, Sigma_eps = Sigma_eps,
+                   alpha = alpha, beta = beta, theta = theta)
+fit1 <- stan(file = "heritability.stan", data = dataList.1, 
+            iter = 2000, chains = 4, warmup = 500,
+            cores = getOption("mc.cores", 4L),
+            pars = c("sigma_sq_g", "sigma_sq_eps", "h2"))
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+y <- risk_diff[1:209]
+N <- length(y)
+Sigma_eps <- diag(1, nrow = N, ncol = N)
+beta <- 9
+dataList.1 <- list(N = N, K = matrix(grm[, 2:210]), Sigma_eps = Sigma_eps,
+                   alpha = alpha, beta = beta, theta = theta)
+fit2 <- stan(file = "heritability.stan", data = dataList.1, 
+            iter = 2000, chains = 4, warmup = 500,
+            cores = getOption("mc.cores", 4L),
+            pars = c("sigma_sq_g", "sigma_sq_eps", "h2"))
+```
+
+```{r, message = FALSE, warning = FALSE}
+y <- risk_diff[1:209]
+N <- length(y)
+Sigma_eps <- diag(1, nrow = N, ncol = N)
+beta <- 4
+dataList.1 <- list(N = N, K = matrix(grm[, 2:210]), Sigma_eps = Sigma_eps,
+                   alpha = alpha, beta = beta, theta = theta)
+fit3 <- stan(file = "heritability.stan", data = dataList.1, 
+            iter = 2000, chains = 4, warmup = 500,
+            cores = getOption("mc.cores", 4L),
+            pars = c("sigma_sq_g", "sigma_sq_eps", "h2"))
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+y <- risk_diff[1:209]
+N <- length(y)
+Sigma_eps <- diag(1, nrow = N, ncol = N)
+beta <- 9
+dataList.1 <- list(N = N, K = matrix(grm[, 2:210]), Sigma_eps = Sigma_eps,
+                   alpha = alpha, beta = beta, theta = theta)
+fit3_full <- stan(file = "heritability.stan", data = dataList.1, 
+            iter = 2000, chains = 4, warmup = 500,
+            cores = getOption("mc.cores", 4L), include = F,
+            pars = c("Sigma"))
+```
+
+
+```{r}
+save(fit1, file = "fit1.RData")
+save(fit2, file = "fit2.RData")
+save(fit3, file = "fit3.RData")
+save(fit4, file = "fit4.RData")
+```
+
+
+```{r}
+launch_shinystan(fit3_full)
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+y <- risk_diff[1:209]
+N <- length(y)
+Sigma_eps <- diag(1, nrow = N, ncol = N)
+beta <- 1
+dataList.1 <- list(N = N, K = matrix(grm[, 2:210]), Sigma_eps = Sigma_eps,
+                   alpha = alpha, beta = beta, theta = theta)
+fit4 <- stan(file = "heritability.stan", data = dataList.1, 
+            iter = 2000, chains = 4, warmup = 500,
+            cores = getOption("mc.cores", 4L),
+            pars = c("sigma_sq_g", "sigma_sq_eps", "h2"))
+```
+
+```{r}
+summary_fit1 <- summary(fit1)$summary
+summary_fit2 <- summary(fit2)$summary
+summary_fit3 <- summary(fit3)$summary
+summary_fit4 <- summary(fit4)$summary
+save(summary_fit1, summary_fit2, summary_fit3, summary_fit4, file = "fit_summaries.RData")
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+beta <- 9
+dataList.1 <- list(N = N, K = matrix(grmall[, 2:210]), Sigma_eps = Sigma_eps,
+                   alpha = alpha, beta = beta, theta = theta)
+fit_allgenes <- stan(file = "heritability.stan", data = dataList.1, 
+            iter = 2000, chains = 4, warmup = 500,
+            cores = getOption("mc.cores", 4L),
+            pars = c("sigma_sq_g", "sigma_sq_eps", "h2"))
+```
+
+```{r}
+h2_allgenes <- rstan::extract(fit_allgenes, "h2")
+mean(h2_allgenes[[1]])
+fit_allgenes_summary <- summary(fit_allgenes)$summary
+save(fit_allgenes_summary, file = "fit_allgenes_summary.RData")
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+y <- risk_diff[1:209]
+N <- length(y)
+Sigma_eps <- diag(1, nrow = N, ncol = N)
+beta <- 1
+dataList.1 <- list(N = N, K = matrix(grm[, 2:210]), Sigma_eps = Sigma_eps,
+                   alpha = alpha, beta = beta, theta = theta)
+fit4 <- stan(file = "heritability.stan", data = dataList.1, 
+            iter = 2000, chains = 4, warmup = 500,
+            cores = getOption("mc.cores", 4L),
+            pars = c("sigma_sq_g", "sigma_sq_eps", "sigma_sq_c", "h2c", "h2g"))
+```
+
+```{r}
+shiny_view <- launch_shinystan(fit1)
+```
+
+```{r}
+fit1_extract <- rstan::extract(fit1)
+fit2_extract <- rstan::extract(fit2)
+fit3_extract <- rstan::extract(fit3)
+fit4_extract <- rstan::extract(fit4)
+```
+
+```{r}
+p1 <- ggplot(fit`_extract$sigma_sq_g)
+```
+
+
+```{r}
+sigma_sq_g_post <- mean(fit@sim$samples[[1]]$sigma_sq_g)
+sigma_sq_eps_post <- mean(fit@sim$samples[[1]]$sigma_sq_eps)
+mean(fit@sim$samples[[1]]$sigma_sq_g)
+mean(fit@sim$samples[[1]]$sigma_sq_eps)
+sd(fit@sim$samples[[1]]$sigma_sq_g)
+sd(fit@sim$samples[[1]]$sigma_sq_eps)
+h2_post <- sigma_sq_g_post/(sigma_sq_eps_post + sigma_sq_g_post)
+```
+
+```{r}
+plot(fit@sim$samples[[1]]$sigma_sq_g, ty = "l")
+plot(fit@sim$samples[[1]]$sigma_sq_eps, ty = "l")
+acf(fit@sim$samples[[1]]$sigma_sq_g)
+acf(fit@sim$samples[[1]]$sigma_sq_eps)
+pairs(fit)
+```
+
+```{r}
+shiny_view <- launch_shinystan(fit2)
+```
+
+
+####
+
+
+```{r}
+fconn_centered <- array(dim = c(209, 372, 372))
+means <- apply(fconn_overall, c(2, 3), mean)
+for (i in 1:209) {
+  fconn_centered <- fconn_overall[i, , ] - means
+}
+```
+
+```{r}
+fconn_sim <- matrix(nrow = 209, ncol = 209)
+for (i in 1:209) {
+  fconn_sim[i, i] <- sqrt(sum(fconn_overall[i, ,] * fconn_overall[i, ,]))
+}
+for (i in 1:208) {
+  cat(i)
+  for (j in (i + 1):209) {
+    fconn_sim[i, j] <- sum(fconn_overall[i, ,] * fconn_overall[j, ,])/(fconn_sim[i, i] * fconn_sim[j, j])
+    fconn_sim[j, i] <- fconn_sim[i, j]
+  }
+}
+save(fconn_sim, file = "fconn_sim.RData")
+```
+
+
+
+```{r, message = FALSE, warning = FALSE}
+y <- risk_diff[1:209]
+N <- length(y)
+Sigma_eps <- diag(1, nrow = N, ncol = N)
+beta <- 9
+dataList.2 <- list(N = N, K = fconn_sim, Sigma_eps = Sigma_eps,
+                   alpha = alpha, beta = beta, theta = theta)
+fit_fc <- stan(file = "heritability_fc.stan", data = dataList.2, 
+            iter = 2000, chains = 4, warmup = 500,
+            cores = getOption("mc.cores", 4L),
+            pars = c("sigma_sq_g", "sigma_sq_eps", "h2"))
+save(fit_fc, file = "fit_fc.RData")
+```
+
+```{r}
+launch_shinystan(fit_fc)
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+y <- risk_diff[1:209]
+N <- length(y)
+Sigma_eps <- diag(1, nrow = N, ncol = N)
+beta <- 1
+dataList.2 <- list(N = N, K = fconn_sim, Sigma_eps = Sigma_eps,
+                   alpha = alpha, beta = beta, theta = theta)
+fit_fc <- stan(file = "heritability_fc.stan", data = dataList.2, 
+            iter = 2000, chains = 4, warmup = 500,
+            cores = getOption("mc.cores", 4L),
+            pars = c("sigma_sq_g", "sigma_sq_eps", "h2"))
+```
+
+```{r}
+launch_shinystan(fit_fc)
+```
+
+
+
+```{r, message = FALSE, warning = FALSE}
+y <- risk_diff[1:209]
+N <- length(y)
+Sigma_eps <- diag(1, nrow = N, ncol = N)
+alpha <- 1
+beta <- 1
+gamma <- 1
+theta <- 0.001
+dataList.2 <- list(N = N, Kg = matrix(grm[, 2:210]), Kc = fconn_sim, Sigma_eps = Sigma_eps,
+                   alpha = alpha, beta = beta, gamma = gamma, theta = theta)
+fit_2varcomps <- stan(file = "heritability_2varcomps.stan", data = dataList.2, 
+            iter = 2000, chains = 4, warmup = 500,
+            cores = getOption("mc.cores", 4L),
+            pars = c("sigma_sq_g", "sigma_sq_eps", "sigma_sq_c", "h2c", "h2g"))
+```
+
+```{r}
+launch_shinystan(fit_2varcomps)
+```

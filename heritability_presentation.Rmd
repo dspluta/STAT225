@@ -1,0 +1,483 @@
+---
+title: "Bayesian Heritability Analysis of Risk-Taking"
+subtitle: ""
+author: "Dustin Pluta, Zhaoxia Yu, Hernando Ombao"
+date: "25 May 2017"
+output:
+    xaringan::moon_reader:
+      seal: yes
+      css: "mycss.css"
+    nature:
+      highlightStyle: github
+---
+
+layout: true
+background-image: url(Figures/dna.jpg)
+background-position: right
+background-size: fill
+
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE,
+                      cahche = TRUE)
+library(dplyr)
+library(plotly)
+library(ggplot2)
+library(ggthemes)
+library(png)
+library(grid)
+library(DT)
+risk_counts <- read.csv("Data/risk_counts.csv")
+risk_counts <- risk_counts %>% group_by(subj_id) %>% mutate(diff = diff(risk),
+                                                                total = sum(risk))
+load("fit_summaries.RData")
+load("fit_allgenes_summary.RData")
+```
+
+---
+
+# Overview
+
+1. Scientific Setting
+
+2. Models for Bayesian Heritability Analysis
+
+3. Results
+
+4. Model Diagnostics
+
+5. Future Directions
+
+
+---
+
+# Scientific Setting
+
+#### The data set consists of
+
+  - 209 subjects,
+  
+  - 500K SNP values for each subject,
+  
+  - fMRI readings from 375 parcellated regions for resting state, decision-making 
+  task, and working memory task,
+  
+  - Behavioral data for decision-making and working memory tasks.
+
+#### Our focus here is on estimating the heritability of characteristics of risky-decision making.
+
+
+---
+
+# Genetics
+### SNPs
+
+__DNA__ is a double-helix with rungs composed of pairs of nucleotides: 
+cytosine (C), guanine (G), adenine (A), thymine (T).  
+
+* __Single Nucleotide Polymorphisms (SNPs)__ are locations in the genome 
+that exhibit substantial variation across the population (different for $>1\%$ of the population).
+
+* There are approximately 10 million SNPs in the human genome.
+
+* Each SNP can take one of three values (known as __alleles__):
+
+	+ __Common Homozygote__: base genotype.
+
+	+ __Heterozygote__: parents contribute different alleles.
+
+	+ __Uncommon Homozygote__: rare or uncommon allele contributed by both parents.
+
+
+---
+
+# Genetics
+
+.center[<img src="Figures/snp.jpg" height="400">]
+
+---
+
+# Genetic Relationship Matrix
+<br>
+The __genetic relationship matrix__ (GRM) has entry $j, k$ given by
+
+$$K_{jk} = \frac{1}{P}\sum_{i = 1}^P\frac{(x_{ij} - 2p_i)(x_{ik} - 2p_i)}{2p_i(1 - p_i)},$$
+
+where $x_{ij}$ the number of copies of the reference allele for the $i$th SNP of the $j$th individual,
+$p_i$ the frequency of the minor allele, and $P$ is the total number of SNPs considered.
+
+<br>
+<strong>This measures the genetic covariance between individuals relative to the 
+expected heterozygosity.</strong>
+
+---
+
+# Cups Task
+
+  - The __cups task__ is a psychological test designed to measure 
+  a subject's decision-making and evaluation of risk.
+
+  - Each trial of the cups task presents the subject with a collection 
+  of cups: 
+  
+      + one cup is marked as being a __sure win__ for a known fixed amount (e.g. $1); 
+      
+      + an adjacent set of 3-5 __risky__ cups is also given, with each cup containing unknown and variable reward amounts (e.g. $0-5).
+
+  - The subject's goal is to maximize their earnings over repeated trials.
+  
+  - There are 140 trials over about 10 minutes, 70 "gain" domain trials and 70 "loss" domain trials.
+
+
+---
+
+# Cups Task
+
+.center[<img src="Figures/cuptask_mockup.png" height="450">]
+
+
+---
+
+# Cups Task
+
+.center[<img src="Figures/stimulus_series_twoplots.png" height="500">]
+
+
+---
+
+# Data
+
+```{r, fig.align="center"}
+plt <- ggplot(risk_counts, aes(x = risk, fill = as.factor(task))) + 
+  geom_histogram(alpha = 0.6, color = "black") + 
+  ggtitle("Risk Counts") + 
+  scale_fill_discrete(name = "Domain", labels = c("Win", "Loss")) +
+  xlab("Risk Counts") + 
+  ylab("Frequency") +
+  theme_dark()
+ggplotly(plt)
+```
+
+---
+
+# Data
+
+```{r, fig.align="center"}
+plt <- ggplot(risk_counts, aes(x = diff)) + 
+  geom_histogram(alpha = 0.4, color = "black", fill = "lightgreen") + 
+  ggtitle("Difference in Risk Counts") + 
+  xlab("Count Difference") + 
+  ylab("Frequency") +
+  theme_dark()
+ggplotly(plt)
+```
+
+
+---
+
+# Models for Bayesian Heritability Analysis
+
+Suppose we have $N$ subjects, $P$ SNPs, and 
+observed scalar responses $Y_i$, for each subject $i = 1, \cdots, N$.
+
+The common simple model for heritability analysis is
+
+$$Y = X\beta + \varepsilon,$$
+
+where
+
+
+$$\begin{aligned}
+&X \text{ is the } N \times P \text{ genetic data matrix,}\\
+&\beta \sim N(0, \sigma^2_{\beta}) \text{ is the } P \times 1 \text{ random vector of SNP coefficients,}\\
+&\varepsilon \sim N(0, \Sigma_{\varepsilon}) \text{ is the within subject errors.}
+\end{aligned}$$
+
+
+---
+
+# Models for Bayesian Heritability Analysis
+
+We can aggregate the genetic effects into a random vector $g \equiv X\beta$, so that 
+the model can be rewritten as
+
+$$Y = g + \varepsilon,$$
+
+which implies a multivariate Gaussian distribution on the response vector.  Assuming 
+$\Sigma_{\varepsilon} = \sigma^2_{\varepsilon}I_N$, this distribution is
+
+$$Y \sim N(0, \Sigma),$$
+
+where $\Sigma \equiv \sigma^2_gK + \sigma^2_{\varepsilon} \otimes I_N$.
+
+---
+
+# Models for Bayesian Heritability Analysis
+
+The __heritability__ of the trait measured by $Y$ is defined as 
+
+$$h^2 \equiv \frac{\sigma^2_{g}}{\sigma^2_g + \sigma^2_{\varepsilon}}.$$
+
+Clearly $0 \leq h^2 \leq 1$.
+
+--
+
+The __GCTA__ method estimates $h^2$ using the __mixed effects model__ framework and __REML__ methods, but this has some drawbacks, including computational difficulties, and lack of generalizability.
+
+--
+
+Let's use __Bayes__ instead!
+
+.center[<img src="Figures/thomas-bayes.png" 
+width="300" align="top">]
+<br>
+
+
+---
+
+# Models for Bayesian Heritability Analysis
+
+### Likelihood
+
+
+$$\mathcal{L}(\sigma^2_{g}, \sigma^2_{\varepsilon} | Y) \propto |\Sigma|^{-1/2}\exp\left\{-\frac{1}{2}Y^T\Sigma^{-1}Y\right\}.$$
+
+### Priors
+
+We will employ __HMC__ to sample from the posterior, and so don't need to concern ourselves with conjugacy.
+
+The most interpretable quantity is $h^2 \in (0, 1)$, so a $Beta(\alpha, \beta)$ 
+distribution is natural,
+
+$$p(h^2) \sim Beta(\alpha, \beta).$$
+
+
+---
+
+# Models for Bayesian Heritability Analysis
+
+### Priors
+
+Recall that for $U \sim Gamma(\alpha, \theta), V \sim Gamma(\beta, \theta)$, 
+
+$$\frac{U}{U + V} \sim Beta(\alpha, \beta).$$
+
+So we can place $Gamma$ priors on the variance components to induce an appropriate $Beta$ prior on $h^2$.
+
+---
+
+# Models for Bayesian Heritability Analysis
+
+Specifically, we conservatively expect $h^2$ to be close to 0.  The prior mean 
+of $Beta(\alpha, \beta)$ is $\mu_0(h^2) = \frac{\alpha}{\alpha + \beta}$, so 
+we have the relation
+
+$$\beta = \frac{1 - \mu_0}{\mu_0}\alpha.$$
+
+The variance component priors have variances given by
+
+$$p(\sigma^2_g) \sim Gamma(\alpha, \theta) \Rightarrow Var_0(\sigma^2_g) = \frac{\alpha}{\theta^2}$$
+$$p(\sigma^2_{\varepsilon}) \sim Gamma(\beta, \theta) \Rightarrow Var_0(\sigma^2_{\varepsilon}) = \frac{\beta}{\theta^2}$$
+---
+
+# Models for Bayesian Heritability Analysis
+### Priors
+
+```{r, results = "asis"}
+model_table <- data.frame("Prior Mean h2" = c(0.01, 0.05, 0.1, 0.5, 0.05), 
+                      "alpha" = c(1, 1, 1, 1, 1), 
+                      "beta" = c(99, 19, 9, 1, 19), 
+                      "theta" = c(0.001, 0.001, 0.001, 0.001, 0.001))
+row.names(model_table) <- c("Model 1", "Model 2", "Model 3", "Model 4", "All Genes")
+DT::datatable(
+  model_table, 
+  fillContainer = FALSE, options = list(sDom  = '<"top"><"bottom">'),
+  autoHideNavigation = T, selection = "none"
+)
+```
+
+---
+
+# Models for Bayesian Heritability Analysis
+### Model
+
+$$y \sim N(0, \sigma^2_{g}K + \sigma^2_{\varepsilon} I_N)$$
+
+$$\begin{aligned}
+&\sigma^2_{g} \sim Gamma(1, 0.001)\\
+&\sigma^2_{\varepsilon} \sim Gamma(\beta, 0.001)\\
+&h^2 \sim Beta(1, \beta),
+\end{aligned}$$
+
+where the prior on $h^2$ is induced by the variance components priors.
+
+### Sampling Paramters
+
+* Iterations: 2000
+    + Leapfrog/Iteration: 10
+* Burn-in: 500
+* Chains: 4
+* No thinning
+
+
+[A Conceptual Intro to HMC](https://arxiv.org/pdf/1701.02434.pdf)
+
+
+
+---
+
+# Results
+
+### Model Comparisons
+
+```{r}
+model_comps <- tbl_df(matrix(c(summary_fit1$summary[3, c(1, 3, 4, 8)],
+                      summary_fit2$summary[3, c(1, 3, 4, 8)],
+                      summary_fit3$summary[3, c(1, 3, 4, 8)],
+                      summary_fit4$summary[3, c(1, 3, 4, 8)],
+                      fit_allgenes_summary[3, c(1, 3, 4, 8)]), byrow = T, ncol = 4))
+model_comps <- round(model_comps, digits = 3)
+model_comps$model <- c(paste("Model", 1:4), "All Genes")
+names(model_comps) <- c("h2_mean", "se", "lower", "upper", "model")
+DT::datatable(model_comps,
+              fillContainer = FALSE, options = list(sDom  = '<"top"><"bottom">'),
+  autoHideNavigation = T, selection = "none"
+)
+```
+
+---
+
+# Results
+
+```{r}
+plt <- ggplot(model_comps, aes(x=model, y=h2_mean, colour=as.factor(model))) + 
+  geom_errorbar(aes(ymin=lower, ymax=upper), width=.1, colour = "black") + 
+  geom_point(size = 3) + 
+  ggtitle("Model Heritability Estimates") + 
+  scale_colour_discrete(name = "Model", labels = 1:4) +
+  xlab("Model") + 
+  ylab("h2") +
+  theme_dark()
+ggplotly(plt)
+```
+
+
+---
+
+# Diagnostics
+### Trace and Posterior for $h^2$
+
+.center[<img src="Figures/model2_diagnostics_h2.png" height="425">]
+
+
+
+---
+
+# Diagnostics
+### Trace and Posterior for $\sigma^2_{g}$
+
+.center[<img src="Figures/model2_diagnostics.png" height="425">]
+
+
+---
+
+# Diagnostics
+### Trace and Posterior for $\sigma^2_{\varepsilon}$
+
+.center[<img src="Figures/model2_diagnostics_s2eps.png" height="425">]
+
+
+---
+
+# Diagnostics
+### Posterior Predictive Checks
+
+.center[<img src="Figures/pp_hists.png" height="425">]
+
+
+---
+
+# Diagnostics
+### Density of $y_{rep}$ compared to $y$
+
+.center[<img src="Figures/pp_density.png" height="425">]
+
+
+---
+
+# Diagnostics
+### Plot of Average $y_rep$ against $y$
+
+.center[<img src="Figures/pp_scatterplot.png" height="350">]
+
+
+---
+
+# Future Work
+
+- Extend to multiple variance components.
+
+- Apply different kernels to capture different aspects of the data, 
+in particular the Identity by Descent kernel has been shown useful for 
+heritability analyses. 
+
+- Use scientific knowledge and previous results for feature selection 
+prior to analysis.
+
+- Refine the model, include adjustment covariates, consider alternative choices of priors.
+
+- Apply to more data.
+
+
+---
+
+# Appendix: Results
+
+## Model 1
+
+```{r}
+DT::datatable(round(summary_fit1$summary, digits = 2)[1:3, c(1, 2, 3, 4, 8)],
+              fillContainer = FALSE, options = list(sDom  = '<"top"><"bottom">'),
+  autoHideNavigation = T, selection = "none"
+)
+```
+
+---
+
+# Appendix: Results
+
+## Model 2
+
+```{r}
+DT::datatable(round(summary_fit2$summary, digits = 2)[1:3, c(1, 2, 3, 4, 8)],
+              fillContainer = FALSE, options = list(sDom  = '<"top"><"bottom">'),
+  autoHideNavigation = T, selection = "none"
+)
+```
+
+---
+
+# Appendix: Results
+
+## Model 3
+
+```{r}
+DT::datatable(round(summary_fit3$summary, digits = 2)[1:3, c(1, 2, 3, 4, 8)],
+              fillContainer = FALSE, options = list(sDom  = '<"top"><"bottom">'),
+  autoHideNavigation = T, selection = "none"
+)
+```
+
+
+---
+
+# Appendix: Results
+
+## Model 4
+
+```{r}
+DT::datatable(round(summary_fit4$summary, digits = 2)[1:3, c(1, 2, 3, 4, 8)],
+              fillContainer = FALSE, options = list(sDom  = '<"top"><"bottom">'),
+  autoHideNavigation = T, selection = "none"
+)
+```
